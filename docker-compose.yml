@@ -1,0 +1,139 @@
+services:
+
+  # 1. MySQL
+  mysqldb:
+    image: mysql:8.0
+    container_name: campus-mysql
+    restart: always
+
+    environment:
+      MYSQL_DATABASE: campus_gig
+      MYSQL_ROOT_PASSWORD: "${DB_PASSWORD:-root}"
+
+    ports:
+      - "3307:3306"
+
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+    networks:
+      - campus-network
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "${DB_USERNAME:-root}",
+          "-p${DB_PASSWORD:-root}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  # 2. Redis
+  redis:
+    image: redis:7-alpine
+    container_name: campus-redis
+    restart: always
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - redis_data:/data
+
+    networks:
+      - campus-network
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 3. Spring Boot Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: campus-gig:1.0
+    container_name: campus-app
+    restart: always
+
+    ports:
+      - "8080:8080"
+
+    environment:
+
+      # -------------------------
+      # MySQL / Spring Datasource
+      # -------------------------
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysqldb:3306/campus_gig?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true"
+
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: "com.mysql.cj.jdbc.Driver"
+
+      SPRING_DATASOURCE_USERNAME: "${DB_USERNAME:-root}"
+
+      SPRING_DATASOURCE_PASSWORD: "${DB_PASSWORD:-root}"
+
+      SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+
+
+      # -------------------------
+      # Redis
+      # -------------------------
+      SPRING_DATA_REDIS_HOST: "redis"
+
+      SPRING_DATA_REDIS_PORT: "6379"
+
+
+      # -------------------------
+      # Custom DB Environment
+      # -------------------------
+      DB_URL: "jdbc:mysql://mysqldb:3306/campus_gig?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true"
+
+      DB_DRIVER: "com.mysql.cj.jdbc.Driver"
+
+      DB_USER: "${DB_USERNAME:-root}"
+
+      DB_PASSWORD: "${DB_PASSWORD:-root}"
+
+
+    depends_on:
+      mysqldb:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+    volumes:
+      - uploads_data:/app/uploads
+
+    networks:
+      - campus-network
+
+
+# =====================================
+# Networks
+# =====================================
+
+networks:
+  campus-network:
+    driver: bridge
+
+
+# =====================================
+# Named Volumes
+# =====================================
+
+volumes:
+  mysql_data:
+  redis_data:
+  uploads_data:
